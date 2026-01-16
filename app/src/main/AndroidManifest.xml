@@ -3,8 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
-
+<!--    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />-->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -15,28 +15,16 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FitnessTracker">
         <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/title_activity_settings"
+            android:theme="@style/Theme.FitnessTracker" />
+        <activity
             android:name=".State"
             android:exported="false"
             android:label="@string/title_activity_state"
             android:theme="@style/Theme.FitnessTracker" />
 
-        <receiver
-            android:name=".ActivityReceiver"
-            android:enabled="true"
-            android:exported="false">
-
-            <!-- For custom step updates -->
-            <intent-filter>
-                <action android:name="com.example.fitnesstracker.STEP_UPDATE" />
-            </intent-filter>
-
-            <!-- For activity recognition -->
-            <intent-filter>
-                <action android:name="com.google.android.gms.location.activityrecognition.STILL" />
-                <action android:name="com.google.android.gms.location.activityrecognition.WALKING" />
-                <action android:name="com.google.android.gms.location.activityrecognition.RUNNING" />
-            </intent-filter>
-        </receiver>
 
         <activity
             android:name=".MainActivity"

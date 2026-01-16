@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -32,20 +34,25 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.fitnesstracker.ui.theme.FitnessTrackerTheme
+import androidx.compose.runtime.getValue
 
 
 class State : ComponentActivity() {
+    val viewModel: FitnessViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme{
+            val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+            FitnessTrackerTheme(darkTheme = isDarkTheme) {
                 stateScreen()
             }
         }
@@ -61,7 +68,7 @@ fun stateScreen(){
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .background(Color(0xFFF5F7FA))
+                .background(MaterialTheme.colorScheme.background)
         ){
             TopHeader("Stats")
             Spacer(modifier = Modifier.height(16.dp))
@@ -87,7 +94,8 @@ fun Last7DaysCard() {
         modifier = Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
 
@@ -96,8 +104,8 @@ fun Last7DaysCard() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Last 7 Days", fontWeight = FontWeight.Bold)
-                Icon(Icons.Default.MoreHoriz, contentDescription = null)
+                Text("Last 7 Days", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Icon(Icons.Default.MoreHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -106,7 +114,7 @@ fun Last7DaysCard() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(180.dp)
-                    .background(Color(0xFFE3F2FD), RoundedCornerShape(12.dp)),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Text("Chart")
@@ -143,14 +151,16 @@ fun DayStatCard(title: String, day: String, steps: String,
                 modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
+            Text(title, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(6.dp))
             Text(day, color = Color.Gray)
             Spacer(modifier = Modifier.height(6.dp))
-            Text(steps, fontWeight = FontWeight.SemiBold)
+            Text(steps, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -161,10 +171,12 @@ fun MetricsSummarySection() {
             .padding(horizontal = 16.dp)
             .fillMaxWidth(),
         shape = RoundedCornerShape(16.dp)
+        ,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
 
-            Text("Metrics Summary", fontWeight = FontWeight.Bold)
+            Text("Metrics Summary", fontWeight = FontWeight.Bold,color = MaterialTheme.colorScheme.onSurface)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -183,10 +195,9 @@ fun MetricRow(icon: String, label: String, value: String) {
             .fillMaxWidth()
             .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text("$icon  $label")
-        Text(value, fontWeight = FontWeight.Bold)
+        verticalAlignment = Alignment.CenterVertically) {
+        Text("$icon  $label", color = MaterialTheme.colorScheme.onSurface)
+        Text(value, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -210,7 +221,11 @@ fun BottomNavBarstate() {
         )
         NavigationBarItem(
             selected = false,
-            onClick = {},
+            onClick = {
+                val intent= Intent(context, SettingsActivity::class.java)
+                context.startActivity(intent)
+                (context as? Activity)?.finish()
+            },
             icon = { Icon(Icons.Default.Settings, null) },
             label = { Text("Settings") }
         )

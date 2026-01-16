@@ -3,7 +3,6 @@ package com.example.fitnesstracker
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,88 +45,114 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
 import android.Manifest
-import android.annotation.SuppressLint
-import android.app.Activity
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.runtime.collectAsState
-import com.google.android.gms.location.ActivityRecognition
 import pub.devrel.easypermissions.EasyPermissions
 import pub.devrel.easypermissions.PermissionRequest
-
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.os.Build
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import com.example.fitnesstracker.ui.theme.FitnessTrackerTheme
 
-class MainActivity : ComponentActivity(), EasyPermissions.PermissionCallbacks {
-    companion object{
-        val rc_recognition=100
-        val recognition_permission=Manifest.permission.ACTIVITY_RECOGNITION
-    }
-    private lateinit var activityReceiver: ActivityReceiver
-    val viewModel: FitnessViewModel by viewModels ()
+class MainActivity : ComponentActivity(), SensorEventListener, EasyPermissions.PermissionCallbacks {
 
-    private val stepUpdateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                "STEP_COUNT_UPDATED" -> {
-                    val steps = intent.getIntExtra("steps", 0)
-                    // In a real app, you would update ViewModel here
-                    // For now, we'll just save to SharedPreferences
-                    val prefs = getSharedPreferences("fitness_data", Context.MODE_PRIVATE)
-                    prefs.edit().putInt("current_steps", steps).apply()
-
-                    // You could also trigger a recomposition here if needed
-                    viewModel.onSensorStepChanged(steps)
-                }
-            }
-        }
+    companion object {
+        const val RC_RECOGNITION = 100
+        const val RECOGNITION_PERMISSION = Manifest.permission.ACTIVITY_RECOGNITION
     }
 
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private var sensorManager: SensorManager? = null
+    private var totalSteps = 0f
+    private var previousTotalSteps = 0f
+
+    val viewModel: FitnessViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
-        val savedSteps = getSharedPreferences("fitness_data", Context.MODE_PRIVATE)
-            .getInt("step_count", 100)
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        loadData() // load previous steps if any
+        requestActivityPermission()
 
-        // 2️⃣ Update ViewModel
-        viewModel.onSensorStepChanged(savedSteps)
         setContent {
-
-            MaterialTheme{
+            val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+            FitnessTrackerTheme(darkTheme = isDarkTheme) {
                 FitnessScreen(
+                    viewModel = viewModel,
                     onRequestPermission = { requestActivityPermission() },
-                    viewModel = viewModel
+                    onResetSteps = { resetSteps() }
                 )
             }
         }
     }
-    override fun onDestroy() {
-        super.onDestroy()
-        // Unregister the receiver
-        unregisterReceiver(stepUpdateReceiver)
-    }
-    private fun requestActivityPermission(){
-        if(EasyPermissions.hasPermissions(this, recognition_permission)){
-            startActivityRecognition()
-        }else{
-            EasyPermissions.requestPermissions(
-                PermissionRequest.Builder(
-                    this,
-                    rc_recognition,
-                    recognition_permission
 
-                )
+    override fun onResume() {
+        super.onResume()
+        // register sensor
+        val stepSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        if (stepSensor == null) {
+            Toast.makeText(this, "No step counter sensor detected", Toast.LENGTH_SHORT).show()
+        } else {
+            sensorManager?.registerListener(this, stepSensor, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager?.unregisterListener(this)
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event != null) {
+            totalSteps = event.values[0]
+
+
+            if (previousTotalSteps == 0f) {
+                previousTotalSteps = totalSteps
+                saveData()
+            }
+
+            val currentSteps = (totalSteps - previousTotalSteps).toInt()
+            viewModel.onSensorStepChanged(currentSteps.toFloat())
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun resetSteps() {
+        previousTotalSteps = totalSteps
+        saveData()
+        viewModel.onSensorStepChanged(totalSteps)
+    }
+
+    private fun saveData() {
+        getSharedPreferences("fitness_data", Context.MODE_PRIVATE)
+            .edit()
+            .putFloat("previous_steps", previousTotalSteps)
+            .apply()
+    }
+
+    private fun loadData() {
+        previousTotalSteps = getSharedPreferences("fitness_data", Context.MODE_PRIVATE)
+            .getFloat("previous_steps", 0f)
+    }
+
+    // ----- EasyPermissions -----
+    private fun requestActivityPermission() {
+        if (EasyPermissions.hasPermissions(this, RECOGNITION_PERMISSION)) {
+            Toast.makeText(this, "Permission already granted", Toast.LENGTH_SHORT).show()
+        } else {
+            EasyPermissions.requestPermissions(
+                PermissionRequest.Builder(this, RC_RECOGNITION, RECOGNITION_PERMISSION)
                     .setRationale("We need this permission to track your daily steps")
                     .setPositiveButtonText("Allow")
                     .setNegativeButtonText("Cancel")
@@ -135,60 +160,20 @@ class MainActivity : ComponentActivity(), EasyPermissions.PermissionCallbacks {
             )
         }
     }
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        EasyPermissions.onRequestPermissionsResult(
-            requestCode,
-            permissions,
-            grantResults,
-            this
-        )
-    }
 
-    override fun onPermissionsGranted(p0: Int, p1: List<String?>) {
-        if (p1.contains(recognition_permission)) {
-            startActivityRecognition()
+    override fun onPermissionsGranted(requestCode: Int, perms: List<String?>) {
+        if (perms.contains(RECOGNITION_PERMISSION)) {
+            Toast.makeText(this, "Permission granted", Toast.LENGTH_SHORT).show()
         }
     }
 
-    override fun onPermissionsDenied(p0: Int, p1: List<String?>) {
+    override fun onPermissionsDenied(requestCode: Int, perms: List<String?>) {
         Toast.makeText(this, "Permission denied!", Toast.LENGTH_SHORT).show()
     }
-    private fun startActivityRecognition() {
-        // Check if permission is still granted
-        if (!EasyPermissions.hasPermissions(this, recognition_permission)) {
-            Toast.makeText(this, "Activity recognition permission not granted", Toast.LENGTH_SHORT).show()
-            return
-        }
 
-        try {
-            val client = ActivityRecognition.getClient(this)
-            val intent = Intent(this, ActivityReceiver::class.java)
-            val pendingIntent = PendingIntent.getBroadcast(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            client.requestActivityUpdates(3000, pendingIntent)
-                .addOnSuccessListener {
-                    Toast.makeText(this, "Activity tracking started!", Toast.LENGTH_SHORT).show()
-                }
-                .addOnFailureListener { e ->
-                    Toast.makeText(this, "Failed to start tracking: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-        } catch (e: SecurityException) {
-            // Handle the case where permission was revoked
-            Toast.makeText(this, "Permission was revoked. Please grant permission again.", Toast.LENGTH_SHORT).show()
-
-            // Optionally, request permission again
-            requestActivityPermission()
-        }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this)
     }
 }
 
@@ -198,6 +183,7 @@ class MainActivity : ComponentActivity(), EasyPermissions.PermissionCallbacks {
 @Composable
 fun FitnessScreen(
     onRequestPermission: () -> Unit={},
+    onResetSteps: () -> Unit = {},
     viewModel: FitnessViewModel = viewModel()
 )  {
     val stepCount by viewModel.stepCount.collectAsState()
@@ -212,7 +198,7 @@ fun FitnessScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .background(Color(0xFFF5F7FA))
+                .background(MaterialTheme.colorScheme.background)
         ) {
 
             TopHeader("Fitness Tracker")
@@ -221,8 +207,8 @@ fun FitnessScreen(
                 onRequestPermission()
             }
 
-            Text("Hello, Adam!", color = Color.Black, fontSize = 18.sp , modifier = Modifier.padding(20.dp,5.dp))
-            Text("Today's Activity", color = Color.Black.copy(alpha = 0.8f) ,modifier = Modifier.padding(20.dp,5.dp))
+            Text("Hello, Adam!", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp , modifier = Modifier.padding(20.dp,5.dp))
+            Text("Today's Activity", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),modifier = Modifier.padding(20.dp,5.dp))
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -230,6 +216,14 @@ fun FitnessScreen(
                 steps = stepCount,  // Use ViewModel state
                 goal = goal
             )
+            Button(
+                onClick = { onResetSteps()},
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth()
+            ) {
+                Text("Reset Steps")
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -284,7 +278,8 @@ fun StepProgress(steps: Int, goal: Int) {
             Text(
                 text = "$steps",
                 fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text("Steps")
             Text("Goal: $goal Steps", color = Color.Gray)
@@ -306,14 +301,14 @@ fun StatsRow(calories: Int, activeTime: Int) {
 fun StatItem(icon: String, value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(icon, fontSize = 24.sp)
-        Text(value, fontWeight = FontWeight.Bold)
+        Text(value, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         Text(label, color = Color.Gray)
     }
 }
 @Composable
 fun DailySummary() {
     Column(modifier = Modifier.padding(16.dp)) {
-        Text("Daily Summary", fontWeight = FontWeight.Bold ,textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(0.dp,10.dp))
+        Text("Daily Summary", fontWeight = FontWeight.Bold ,textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(0.dp,10.dp), color = MaterialTheme.colorScheme.onBackground)
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -340,7 +335,7 @@ fun SummaryCard(
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor =  MaterialTheme.colorScheme.surface
         )
     ) {
         Column(
@@ -369,7 +364,7 @@ fun SummaryCard(
                 text = value,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.Black
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -399,7 +394,8 @@ fun WeeklyProgressExact() {
         Text(
             text = "Weekly Progress",
             fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
+            fontSize = 16.sp,
+            color =  MaterialTheme.colorScheme.onBackground
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -525,7 +521,8 @@ fun BottomNavBar() {
         )
         NavigationBarItem(
             selected = false,
-            onClick = {},
+            onClick = {val intent= Intent(context, SettingsActivity::class.java)
+                context.startActivity(intent)},
             icon = { Icon(Icons.Default.Settings, null) },
             label = { Text("Settings") }
         )
@@ -538,12 +535,14 @@ fun RequestPermissionButton(onRequestPermission: () -> Unit) {
             .fillMaxWidth()
             .padding(16.dp)
             .clickable { onRequestPermission() },
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Text(
             "Request Permission",
             modifier = Modifier.padding(16.dp),
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }
