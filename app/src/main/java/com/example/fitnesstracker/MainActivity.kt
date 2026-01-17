@@ -51,6 +51,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
@@ -59,9 +60,15 @@ import pub.devrel.easypermissions.EasyPermissions
 import pub.devrel.easypermissions.PermissionRequest
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.viewModels
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import com.example.fitnesstracker.ui.theme.FitnessTrackerTheme
+import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity(), SensorEventListener, EasyPermissions.PermissionCallbacks {
 
@@ -82,17 +89,42 @@ class MainActivity : ComponentActivity(), SensorEventListener, EasyPermissions.P
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         loadData() // load previous steps if any
         requestActivityPermission()
+        scheduleDailyReset()
 
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsState()
             FitnessTrackerTheme(darkTheme = isDarkTheme) {
                 FitnessScreen(
                     viewModel = viewModel,
-                    onRequestPermission = { requestActivityPermission() },
-                    onResetSteps = { resetSteps() }
+                    onRequestPermission = { requestActivityPermission() }
                 )
             }
         }
+    }
+    private fun scheduleDailyReset() {
+        val now = Calendar.getInstance()
+
+        val nextMidnight = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+        }
+
+        val delay = nextMidnight.timeInMillis - now.timeInMillis
+
+        val dailyWork = OneTimeWorkRequestBuilder<DailyResetWorker>()
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .addTag("DAILY_RESET_WORK")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            "DAILY_RESET_WORK",
+            ExistingWorkPolicy.REPLACE,
+            dailyWork
+        )
+
+        Log.d("MainActivity", "Daily reset scheduled in ${delay / 1000 / 60} minutes")
     }
 
     override fun onResume() {
@@ -122,17 +154,13 @@ class MainActivity : ComponentActivity(), SensorEventListener, EasyPermissions.P
             }
 
             val currentSteps = (totalSteps - previousTotalSteps).toInt()
-            viewModel.onSensorStepChanged(currentSteps.toFloat())
+            viewModel.onSensorStepChanged(totalSteps, this)
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
-    private fun resetSteps() {
-        previousTotalSteps = totalSteps
-        saveData()
-        viewModel.onSensorStepChanged(totalSteps)
-    }
+
 
     private fun saveData() {
         getSharedPreferences("fitness_data", Context.MODE_PRIVATE)
@@ -183,9 +211,12 @@ class MainActivity : ComponentActivity(), SensorEventListener, EasyPermissions.P
 @Composable
 fun FitnessScreen(
     onRequestPermission: () -> Unit={},
-    onResetSteps: () -> Unit = {},
     viewModel: FitnessViewModel = viewModel()
 )  {
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.loadTodaySteps(context)
+    }
     val stepCount by viewModel.stepCount.collectAsState()
     val goal by viewModel.goal.collectAsState()
     val activeTime by viewModel.activeTime.collectAsState()
@@ -216,14 +247,6 @@ fun FitnessScreen(
                 steps = stepCount,  // Use ViewModel state
                 goal = goal
             )
-            Button(
-                onClick = { onResetSteps()},
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth()
-            ) {
-                Text("Reset Steps")
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -236,7 +259,7 @@ fun FitnessScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            WeeklyProgressExact()
+            WeeklyProgressExact(viewModel)
         }
     }
 }
@@ -370,20 +393,33 @@ fun SummaryCard(
     }
 }
 @Composable
-fun WeeklyProgressExact() {
+fun WeeklyProgressExact(viewModel: FitnessViewModel) {
 
-    val data = listOf(
-        Pair("M", 3200),
-        Pair("T", 4500),
-        Pair("W", 3800),
-        Pair("T", 6000),
-        Pair("F", 6800),
-        Pair("S", 7450), // highlighted
-        Pair("S", 7000)
-    )
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.loadLast7Days(context) // هنا نحمّل آخر 7 أيام
+    }
+    val last7Days by viewModel.last7Days.collectAsState()
+    val calendar = Calendar.getInstance()
+    val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
 
-    val highlightIndex = 5
-    val maxValue = data.maxOf { it.second }.toFloat()
+
+    val highlightIndex = when(dayOfWeek) {
+            Calendar.MONDAY -> 0
+            Calendar.TUESDAY -> 1
+            Calendar.WEDNESDAY -> 2
+            Calendar.THURSDAY -> 3
+            Calendar.FRIDAY -> 4
+            Calendar.SATURDAY -> 5
+            Calendar.SUNDAY -> 6
+            else -> 6
+        }
+    val last7DaysByChart = last7Days.toList().reversed()
+    val maxValue = (last7DaysByChart.maxOrNull() ?: 1).toFloat()
+
+    val dayLabels = listOf("M","T","W","T","F","S","S")
+
+
 
     Column(
         modifier = Modifier
@@ -426,35 +462,20 @@ fun WeeklyProgressExact() {
                 verticalAlignment = Alignment.Bottom
             ) {
 
-                data.forEachIndexed { index, item ->
+                last7DaysByChart.forEachIndexed { index, steps ->
+                    val barHeight = (steps / maxValue) * 110f
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
 
-                    val barHeight = (item.second / maxValue) * 110f
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom
-                    ) {
-
-                        // Bubble
                         if (index == highlightIndex) {
                             Box(
                                 modifier = Modifier
-                                    .background(
-                                        Color(0xFF7ED957),
-                                        RoundedCornerShape(12.dp)
-                                    )
+                                    .background(Color(0xFF7ED957), RoundedCornerShape(12.dp))
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
-                                Text(
-                                    text = item.second.toString(),
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Text(text = steps.toString(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                         }
-
                         // Bar
                         Box(
                             modifier = Modifier
@@ -486,14 +507,8 @@ fun WeeklyProgressExact() {
                 .padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            data.forEach {
-                Text(
-                    text = it.first,
-                    fontSize = 12.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.width(22.dp),
-                    textAlign = TextAlign.Center
-                )
+            dayLabels.forEach { day ->
+                Text(day, fontSize = 12.sp, color = Color.Gray, modifier = Modifier.width(22.dp), textAlign = TextAlign.Center)
             }
         }
     }

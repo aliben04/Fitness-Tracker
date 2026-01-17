@@ -58,6 +58,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation("androidx.compose.material:material-icons-extended")
 
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
     // ViewModel and LiveData
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
@@ -72,4 +74,5 @@ dependencies {
 
     implementation("com.google.android.gms:play-services-location:21.2.0")
     implementation("pub.devrel:easypermissions:3.0.0")
+
 }
