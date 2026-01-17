@@ -9,7 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,16 +24,8 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,24 +33,32 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.fitnesstracker.ui.theme.FitnessTrackerTheme
-import androidx.compose.runtime.getValue
-
 
 class State : ComponentActivity() {
-    val viewModel: FitnessViewModel by viewModels()
+    private val viewModel: FitnessViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsState()
             FitnessTrackerTheme(darkTheme = isDarkTheme) {
-                stateScreen()
+                StateScreen(viewModel)
             }
         }
     }
 }
+
 @Composable
-fun stateScreen(){
+fun StateScreen(viewModel: FitnessViewModel) {
+    val calories by viewModel.calories.collectAsState()
+    val distance by viewModel.distance.collectAsState()
+    val floors by viewModel.floors.collectAsState()
+    val sleepTime by viewModel.sleepTime.collectAsState()
+
+    val topActiveDay by viewModel.topActiveDay.collectAsState()
+    val thirdInactiveDay by viewModel.thirdInactiveDay.collectAsState()
+
     Scaffold(
         bottomBar = { BottomNavBarstate() }
     ) { padding ->
@@ -73,23 +72,23 @@ fun stateScreen(){
             TopHeader("Stats")
             Spacer(modifier = Modifier.height(16.dp))
 
-            Last7DaysCard()
+            Last7DaysCard(viewModel)
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ActiveInactiveSection()
+            ActiveInactiveSection(topActiveDay, thirdInactiveDay)
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            MetricsSummarySection()
+            MetricsSummarySection(calories, distance, floors, sleepTime)
 
             Spacer(modifier = Modifier.height(24.dp))
         }
-
     }
 }
+
 @Composable
-fun Last7DaysCard() {
+fun Last7DaysCard(viewModel: FitnessViewModel) {
     Card(
         modifier = Modifier
             .padding(horizontal = 16.dp)
@@ -98,7 +97,6 @@ fun Last7DaysCard() {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-
             Row (
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -110,20 +108,13 @@ fun Last7DaysCard() {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Chart")
-            }
+            WeeklyProgressExact(viewModel)
         }
     }
 }
+
 @Composable
-fun ActiveInactiveSection() {
+fun ActiveInactiveSection(topActive: Pair<String, Int>, thirdInactive: Pair<String, Int>) {
     Row(
         modifier = Modifier
             .padding(horizontal = 16.dp)
@@ -132,27 +123,25 @@ fun ActiveInactiveSection() {
     ) {
         DayStatCard(
             title = "#1 Active Day",
-            day = "Friday",
-            steps = "7,450 Steps",
+            day = topActive.first,
+            steps = "${topActive.second} Steps",
             modifier = Modifier.weight(1f)
         )
 
         DayStatCard(
             title = "#3 Inactive Day",
-            day = "Tuesday",
-            steps = "5,150 Steps",
+            day = thirdInactive.first,
+            steps = "${thirdInactive.second} Steps",
             modifier = Modifier.weight(1f)
         )
     }
 }
 
 @Composable
-fun DayStatCard(title: String, day: String, steps: String,
-                modifier: Modifier = Modifier) {
+fun DayStatCard(title: String, day: String, steps: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -164,26 +153,24 @@ fun DayStatCard(title: String, day: String, steps: String,
         }
     }
 }
+
 @Composable
-fun MetricsSummarySection() {
+fun MetricsSummarySection(calories: Int, distance: Float, floors: Int, sleepTime: String) {
     Card(
         modifier = Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp)
-        ,
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-
-            Text("Metrics Summary", fontWeight = FontWeight.Bold,color = MaterialTheme.colorScheme.onSurface)
-
+            Text("Metrics Summary", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(12.dp))
 
-            MetricRow("🔥", "Calories Burned", "2450 kcal")
-            MetricRow("👣", "Distance", "18.6 km")
-            MetricRow("⬆️", "Floors Climbed", "33 Floors")
-            MetricRow("🌙", "Restful Sleep", "50h 30m")
+            MetricRow("🔥", "Calories Burned", "$calories kcal")
+            MetricRow("👣", "Distance", String.format("%.1f km", distance))
+            MetricRow("⬆️", "Floors Climbed", "$floors Floors")
+            MetricRow("🌙", "Restful Sleep", sleepTime)
         }
     }
 }
@@ -195,7 +182,8 @@ fun MetricRow(icon: String, label: String, value: String) {
             .fillMaxWidth()
             .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically) {
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Text("$icon  $label", color = MaterialTheme.colorScheme.onSurface)
         Text(value, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
     }
@@ -207,9 +195,11 @@ fun BottomNavBarstate() {
     NavigationBar {
         NavigationBarItem(
             selected = false,
-            onClick = {val intent= Intent(context, MainActivity::class.java)
+            onClick = {
+                val intent = Intent(context, MainActivity::class.java)
                 context.startActivity(intent)
-                (context as? Activity)?.finish()},
+                (context as? Activity)?.finish()
+            },
             icon = { Icon(Icons.Default.Home, null) },
             label = { Text("Home") }
         )
@@ -222,7 +212,7 @@ fun BottomNavBarstate() {
         NavigationBarItem(
             selected = false,
             onClick = {
-                val intent= Intent(context, SettingsActivity::class.java)
+                val intent = Intent(context, SettingsActivity::class.java)
                 context.startActivity(intent)
                 (context as? Activity)?.finish()
             },
