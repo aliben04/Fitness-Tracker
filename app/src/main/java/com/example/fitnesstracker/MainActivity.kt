@@ -373,7 +373,6 @@ fun WeeklyProgressExact(viewModel: FitnessViewModel) {
     }
 }
 
-
 @Composable
 fun BottomNavBar() {
     val context = LocalContext.current

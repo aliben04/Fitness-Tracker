@@ -205,16 +205,4 @@ class FitnessViewModel(application: Application) : AndroidViewModel(application)
         prefs.edit { putBoolean("is_dark_theme", newValue) }
     }
 
-    fun resetData(totalSteps: Float) {
-        previousTotalSteps = totalSteps
-        activeTimeMs = 0L
-        prefs.edit {
-            putFloat("previous_steps", previousTotalSteps)
-            putLong("active_time_ms", 0L)
-            putInt("current_daily_steps", 0)
-            putInt("current_daily_floors", 0)
-            putString("current_daily_sleep", "0h 0m")
-        }
-        resetDailyCounters()
-    }
 }
